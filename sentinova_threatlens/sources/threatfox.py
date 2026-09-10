@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from sentinova_threatlens.sources.base import BaseSource
+
+logger = logging.getLogger(__name__)
+
+_API_URL = "https://threatfox-api.abuse.ch/api/v1/"
+
+
+class ThreatFoxSource(BaseSource):
+    name = "ThreatFox"
+
+    def fetch(self) -> list[dict[str, Any]]:
+        api_key = self._config.abusech_api_key
+        if not api_key:
+            logger.warning("[%s] No abuse.ch API key configured — skipping", self.name)
+            return []
+
+        payload = {
+            "query": "get_iocs",
+            "days": 1,
+            "auth_key": api_key,
+        }
+        data = self._post(_API_URL, payload)
+
+        if data.get("query_status") not in ("ok", "no_result"):
+            logger.warning(
+                "[%s] Unexpected status: %s", self.name, data.get("query_status")
+            )
+
+        items = data.get("data", [])
+        logger.info("[%s] Fetched %d IOCs", self.name, len(items))
+        return [data] if items else []

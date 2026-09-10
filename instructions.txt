@@ -1,0 +1,50 @@
+Sentinova Threatlens — CTI Ingestion Engine
+===========================================
+Run Instructions
+---------------------------------------------------------
+
+## STATUS: Setup (PostgreSQL, database, venv, dependencies) COMPLETE
+
+## LAUNCH THE DESKTOP GUI (from the project root) — DEFAULT
+
+    venv/bin/python -m sentinova_threatlens.main
+
+    Flow:  Splash screen (initializes DB → imports sources → validates rules
+           → processes → verifies DB)  ─ then the main SOC-style window opens
+           with the Threat Intelligence Database table populated from PostgreSQL.
+
+## RUN THE HEADLESS / CLI INGESTION ONLY (no GUI)
+
+    venv/bin/python -m sentinova_threatlens.main --headless
+
+## ALTERNATIVE (identical GUI, explicit module)
+
+    venv/bin/python -m sentinova_threatlens.gui
+
+## HOW THE GUI LOADS DATA
+    On launch the splash screen runs the REAL ingestion pipeline in a background
+    thread (fetch → normalize → import-rule validation → upsert → verify).
+    The Database page then queries PostgreSQL and renders records with:
+      - Human-readable names (CVE → vulnerability name, hashes → malware family)
+      - Defanged Website / C2 values  (example[.]com, hxxps://…)
+      - Severity score + tier pill (LOW/MEDIUM/HIGH/CRITICAL, colored + numeric)
+      - Source, sortable columns, live search, and a "View JSON →" modal with
+        syntax highlighting and a copy button.
+
+## API KEYS (optional — sources without valid keys are skipped cleanly)
+    Set them in the .env file, then re-run:
+      ABUSE_CH_API_KEY   → MalwareBazaar + ThreatFox  (from bazaar.abuse.ch)
+      ABUSEIPDB_API_KEY  → AbuseIPDB                 (from abuseipdb.com)
+      GREYNOISE_API_KEY  → GreyNoise                 (from greynoise.io)
+    Source requiring none: CISA KEV (runs out of the box).
+
+    NOTE: if MalwareBazaar/ThreatFox log 401 "Unauthorized", the abuse.ch key is
+    rejected — validate it at https://bazaar.abuse.ch/ (login → account → API key)
+    and confirm it is enabled/reset for API access.
+
+## TROUBLESHOOTING
+    - "Failed to connect to database" → ensure PostgreSQL is running:
+          brew services start postgresql@16
+    - Rebuild the venv after a Homebrew Python upgrade:
+          rm -rf venv && python3 -m venv venv && venv/bin/pip install -r requirements.txt
+    - Headless environments:  QT_QPA_PLATFORM=offscreen python -m sentinova_threatlens.gui
