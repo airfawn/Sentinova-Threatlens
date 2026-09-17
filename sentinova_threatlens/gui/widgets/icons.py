@@ -11,6 +11,7 @@ _ICONS = {
     "database",
     "dashboard",
     "threats",
+    "incidents",
     "sources",
     "settings",
 }
@@ -48,6 +49,12 @@ def draw_icon(painter: QPainter, name: str, color: QColor) -> None:
         path.lineTo(3.5, 4.3)
         path.closeSubpath()
         painter.drawPath(path)
+
+    elif name == "incidents":
+        painter.drawRoundedRect(QRectF(3.0, 3.0, 12.0, 12.0), 2.0, 2.0)
+        painter.drawLine(QPointF(6.0, 7.0), QPointF(12.0, 7.0))
+        painter.drawLine(QPointF(6.0, 10.0), QPointF(13.0, 10.0))
+        painter.drawLine(QPointF(6.0, 13.0), QPointF(10.0, 13.0))
 
     elif name == "sources":
         painter.setBrush(QColor(0, 0, 0, 0))

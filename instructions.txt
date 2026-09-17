@@ -12,10 +12,15 @@ Run Instructions
     Flow:  Splash screen (initializes DB → imports sources → validates rules
            → processes → verifies DB)  ─ then the main SOC-style window opens
            with the Threat Intelligence Database table populated from PostgreSQL.
+           Severity data is fetched in the background after the window opens
+           and shows a progress pill on the Database page — startup is instant.
 
 ## RUN THE HEADLESS / CLI INGESTION ONLY (no GUI)
 
     venv/bin/python -m sentinova_threatlens.main --headless
+
+    (optional:  add --enrich-cvss to also perform a one-time inline CVSS
+    backfill of every stored CVE, paced to avoid NVD rate-limiting)
 
 ## ALTERNATIVE (identical GUI, explicit module)
 
@@ -42,9 +47,32 @@ Run Instructions
     rejected — validate it at https://bazaar.abuse.ch/ (login → account → API key)
     and confirm it is enabled/reset for API access.
 
+## SEVERITY SCORES (CVSS COLLECTION)
+    CVE records are enriched with real CVSS severity from NVD's CVE API (free,
+    no key). Results are cached in `cti_iocs.cvss_cache`; only CVEs missing a
+    cached lookup are ever fetched.
+      - GUI: after the main window opens, a background worker fetches severity
+        for every stored CVE that lacks it. It is sequential + adaptively-paced
+        to stay under NVD's burst protection (no HTTP 429 spiral), shows a
+        progress pill on the Database page, and never blocks startup.
+      - CLI one-time backfill:  --headless --enrich-cvss
+      - CTI_CVSS_ENABLED=1          → enable (default)
+      - CVSS_ENRICHMENT_URL=...     → point at another compatible endpoint
+
 ## TROUBLESHOOTING
     - "Failed to connect to database" → ensure PostgreSQL is running:
           brew services start postgresql@16
     - Rebuild the venv after a Homebrew Python upgrade:
           rm -rf venv && python3 -m venv venv && venv/bin/pip install -r requirements.txt
     - Headless environments:  QT_QPA_PLATFORM=offscreen python -m sentinova_threatlens.gui
+
+  ## COMPLIANCE API
+
+    venv/bin/python -m sentinova_threatlens.api
+
+  The API applies `sentinova_threatlens/db/migrations/002_compliance.sql` after the
+  base schema. Set `CTI_API_TOKEN_SECRET` to a private value before issuing bearer
+  tokens through `/api/v1/auth/token`. Redis is optional; set `CTI_REDIS_ENABLED=0`
+  for offline development. API scopes include `feeds:write`, `iocs:write`,
+  `events:write`, `incidents:write`, `rules:write`, `exports:read`, and
+  `integrations:write`.

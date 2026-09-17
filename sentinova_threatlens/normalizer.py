@@ -17,7 +17,9 @@ _DOMAIN_RE = re.compile(
     r"+[a-zA-Z]{2,}$"
 )
 _MD5_RE = re.compile(r"^[a-fA-F0-9]{32}$")
+_SHA1_RE = re.compile(r"^[a-fA-F0-9]{40}$")
 _SHA256_RE = re.compile(r"^[a-fA-F0-9]{64}$")
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
 
@@ -28,10 +30,14 @@ def classify_ioc(value: str) -> str:
         return "HASH_SHA256"
     if _MD5_RE.match(v):
         return "HASH_MD5"
+    if _SHA1_RE.match(v):
+        return "HASH_SHA1"
     if _CVE_RE.match(v):
         return "CVE"
     if _URL_RE.match(v):
         return "URL"
+    if _EMAIL_RE.match(v):
+        return "EMAIL"
     if _IPV4_RE.match(v):
         return "IP"
     if _DOMAIN_RE.match(v):
@@ -73,6 +79,8 @@ class Normalizer:
             "ThreatFox": self._normalize_threatfox,
             "GreyNoise": self._normalize_greynoise,
             "CISA_KEV": self._normalize_cisa_kev,
+            "OpenPhish": self._normalize_openphish,
+            "TAXII": self._normalize_taxii,
         }.get(source)
 
         if handler is None:
@@ -165,6 +173,8 @@ class Normalizer:
                 "usage_type": usage,
                 "total_reports": item.get("totalReports", 0),
                 "num_distinct_users": item.get("numDistinctUsers", 0),
+                "hostnames": item.get("hostnames", []),
+                "categories": item.get("categories", []),
                 "is_public": item.get("isPublic", False),
                 "is_whitelisted": item.get("isWhitelisted", False),
                 "tor": item.get("isTor", False),
@@ -318,6 +328,32 @@ class Normalizer:
         )]
 
     # ── CISA KEV ──────────────────────────────────────────────────────────
+
+    def _normalize_openphish(self, raw: dict[str, Any]) -> list[dict[str, Any]]:
+        url = str(raw.get("url", "")).strip()
+        if not url:
+            return []
+        return [self._build(
+            ioc_value=url,
+            ioc_type="URL",
+            source="OpenPhish",
+            threat_type="phishing",
+            confidence=90,
+            tags=["phishing"],
+            first_seen=_now_iso(),
+            last_seen=_now_iso(),
+            raw_data=raw,
+            metadata={"provider": "OpenPhish"},
+        )]
+
+    def _normalize_taxii(self, raw: dict[str, Any]) -> list[dict[str, Any]]:
+        value = str(raw.get("value", "")).strip()
+        if value.startswith("[") and " = '" in value:
+            value = value.split(" = '", 1)[1].rsplit("'", 1)[0]
+        kind = classify_ioc(value)
+        if kind == "UNKNOWN":
+            return []
+        return [self._build(ioc_value=value, ioc_type=kind, source="TAXII", threat_type="unknown", confidence=50, tags=[], first_seen=_now_iso(), last_seen=_now_iso(), raw_data=raw.get("raw", raw), metadata={"transport": "TAXII 2.1"})]
 
     def _normalize_cisa_kev(self, raw: dict[str, Any]) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []

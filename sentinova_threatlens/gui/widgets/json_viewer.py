@@ -4,47 +4,20 @@ import json
 import re
 from typing import Any
 
-from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
-    QWidget,
 )
 
 from sentinova_threatlens.gui import theme
-
-
-class _Card(QWidget):
-    """Rounded, shadowed, draggable card used as the dialog surface."""
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet("background: %s; border-radius: %dpx; border: 1px solid %s;"
-                           % (theme.CARD, theme.MODAL_RADIUS, theme.BORDER))
-        self._drag_pos: Any = None
-
-    def mousePressEvent(self, event: Any) -> None:
-        if event.button() == Qt.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: Any) -> None:
-        if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
-            moving = event.globalPosition().toPoint() - self._drag_pos
-            self.window().move(moving)
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: Any) -> None:
-        self._drag_pos = None
-        super().mouseReleaseEvent(event)
+from sentinova_threatlens.gui.widgets.shadowcard import ShadowCard
 
 
 class _JSONHighlighter(QSyntaxHighlighter):
@@ -103,15 +76,11 @@ class JSONViewDialog(QDialog):
         self.setWindowModality(Qt.ApplicationModal)
         self.resize(680, 500)
 
-        self._card = _Card(self)
-        shadow = QGraphicsDropShadowEffect(self._card)
-        shadow.setBlurRadius(48)
-        shadow.setOffset(0, 8)
-        shadow.setColor(QColor(0, 0, 0, 170))
-        self._card.setGraphicsEffect(shadow)
+        self._card = ShadowCard(radius=theme.MODAL_RADIUS, parent=self)
+        self._drag_pos: Any = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
+        root.setContentsMargins(20, 20, 20, 20)
         root.addWidget(self._card)
 
         card = QVBoxLayout(self._card)
@@ -156,6 +125,20 @@ class JSONViewDialog(QDialog):
     def _copy(self) -> None:
         QApplication.clipboard().setText(self._editor.document().toPlainText())
         self._copy_btn.setText("Copied ✓")
+
+    def mousePressEvent(self, event: Any) -> None:
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: Any) -> None:
+        if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: Any) -> None:
+        self._drag_pos = None
+        super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event: Any) -> None:
         if event.key() == Qt.Key_Escape:

@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-CANONICAL_IOC_TYPES = {"IP", "DOMAIN", "URL", "HASH_MD5", "HASH_SHA256", "CVE"}
-KNOWN_SOURCES = {"MalwareBazaar", "AbuseIPDB", "ThreatFox", "GreyNoise", "CISA_KEV"}
+CANONICAL_IOC_TYPES = {"IP", "DOMAIN", "URL", "HASH_MD5", "HASH_SHA1", "HASH_SHA256", "EMAIL", "CVE"}
+KNOWN_SOURCES = {"MalwareBazaar", "AbuseIPDB", "ThreatFox", "GreyNoise", "CISA_KEV", "OpenPhish", "TAXII"}
 KNOWN_THREAT_TYPES = {"malware", "scanner", "C2", "exploit", "phishing", "unknown"}
 REQUIRED_FIELDS = {
     "ioc_value", "ioc_type", "source", "threat_type",
@@ -45,7 +45,9 @@ _TYPED_VALUE_RE = {
     ),
     "URL": re.compile(r"^https?://", re.IGNORECASE),
     "HASH_MD5": re.compile(r"^[a-fA-F0-9]{32}$"),
+    "HASH_SHA1": re.compile(r"^[a-fA-F0-9]{40}$"),
     "HASH_SHA256": re.compile(r"^[a-fA-F0-9]{64}$"),
+    "EMAIL": re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
     "CVE": re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE),
 }
 

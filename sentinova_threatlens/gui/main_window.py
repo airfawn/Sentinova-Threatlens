@@ -2,15 +2,23 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer  # type: ignore[reportMissingImports]
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
 
 from sentinova_threatlens.config import AppConfig
 from sentinova_threatlens.db.engine import DatabaseEngine
 from sentinova_threatlens.gui import theme
+from sentinova_threatlens.gui.backfill import CVSSBackfillWorker
 from sentinova_threatlens.gui.pages.database_page import DatabasePage
-from sentinova_threatlens.gui.pages.placeholder_page import PlaceholderPage
+from sentinova_threatlens.gui.pages.functional_pages import (
+    DashboardPage,
+    IncidentsPage,
+    SettingsPage,
+    SourcesPage,
+    ThreatsPage,
+)
 from sentinova_threatlens.gui.widgets.sidebar import Sidebar
+from sentinova_threatlens.gui.state import AppState
 
 _PAGE_META = {
     "database": None,
@@ -32,6 +40,7 @@ class MainWindow(QMainWindow):
         self.setObjectName("MainRoot")
 
         self._db = DatabaseEngine(config)
+        self._state = AppState(config, self)
 
         central = QWidget()
         central.setObjectName("MainRoot")
@@ -50,16 +59,15 @@ class MainWindow(QMainWindow):
         self._db_page = DatabasePage(config, self._db)
         self._pages: dict[str, QWidget] = {
             "database": self._db_page,
+            "dashboard": DashboardPage(self._state),
+            "threats": ThreatsPage(self._state),
+            "incidents": IncidentsPage(self._state),
+            "sources": SourcesPage(self._state),
+            "settings": SettingsPage(config, self._state),
         }
         self._stack.addWidget(self._db_page)
-
-        for key, meta in _PAGE_META.items():
-            if key == "database" or not meta:
-                continue
-            title, subtitle = meta
-            page = PlaceholderPage(title, subtitle)
-            self._pages[key] = page
-            self._stack.addWidget(page)
+        for key in ("dashboard", "threats", "incidents", "sources", "settings"):
+            self._stack.addWidget(self._pages[key])
 
         self._sidebar.page_requested.connect(self._on_page)
         self._fade = QPropertyAnimation(self, b"windowOpacity", self)
@@ -68,11 +76,46 @@ class MainWindow(QMainWindow):
         self._fade.setEndValue(1.0)
         self._fade.setEasingCurve(QEasingCurve.OutCubic)
         self._anim_page: QPropertyAnimation | None = None
+        self._backfill: CVSSBackfillWorker | None = None
+        self._backfill_started = False
+        self._state_refreshed = False
 
     def showEvent(self, event: Any) -> None:
         super().showEvent(event)
         self._fade.stop()
         self._fade.start()
+        if not self._state_refreshed:
+            self._state_refreshed = True
+            self._state.refresh()
+        self._start_backfill()
+
+    # ── Background CVSS enrichment (never blocks the UI) ───────────────
+    def _start_backfill(self) -> None:
+        if self._backfill_started or not self._config.sources.cvss_enabled:
+            return
+        self._backfill_started = True
+        self._backfill = CVSSBackfillWorker(self._config, self._db)
+        self._backfill.progress.connect(self._on_backfill_progress)
+        self._backfill.finished.connect(self._on_backfill_finished)
+        self._backfill.finished.connect(self._backfill.deleteLater)
+        self._backfill.start()
+
+    def _on_backfill_progress(self, done: int, total: int, scored: int) -> None:
+        self._db_page.set_cvss_status(
+            f"Fetching severity {done:,}/{total:,} · {scored:,} scored",
+            visible=True,
+        )
+        if done % 150 == 0 or done == total:
+            self._db_page.reload()
+
+    def _on_backfill_finished(self, scored: int, unfound: int) -> None:
+        self._db_page.set_cvss_status(
+            f"Severity up to date · {scored:,} scored"
+            + (f" · {unfound:,} NVD lookup missed" if unfound else ""),
+            visible=True,
+        )
+        self._db_page.reload()
+        QTimer.singleShot(3000, lambda: self._db_page.set_cvss_status("", False))
 
     def _on_page(self, key: str) -> None:
         page = self._pages.get(key)
@@ -92,8 +135,12 @@ class MainWindow(QMainWindow):
         return self._db_page
 
     def closeEvent(self, event: Any) -> None:
+        if self._backfill is not None:
+            self._backfill.requestInterruption()
+            self._backfill.wait(2000)
         try:
             self._db.close()
         except RuntimeError:
             pass
+        self._state.close()
         super().closeEvent(event)

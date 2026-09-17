@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -23,10 +23,9 @@ from sentinova_threatlens.config import AppConfig
 from sentinova_threatlens.db.engine import DatabaseEngine
 from sentinova_threatlens.gui import theme
 from sentinova_threatlens.gui.pages.base import BasePage
-from sentinova_threatlens.gui.widgets.json_viewer import JSONViewDialog
 from sentinova_threatlens.gui.widgets.presentation import (
-    display_c2,
-    display_name,
+    display_details,
+    display_indicator,
     severity_score,
     severity_tier,
     source_label,
@@ -35,11 +34,10 @@ from sentinova_threatlens.gui.widgets.severity import paint_severity
 
 SORT_ROLE = Qt.UserRole + 1
 _HEADERS = [
-    ("name", "Name"),
-    ("c2", "Website / C2"),
+    ("indicator", "Indicator"),
+    ("details", "Details"),
     ("severity", "Severity"),
     ("source", "Source"),
-    ("raw", "Raw JSON"),
 ]
 
 
@@ -75,26 +73,22 @@ class _TableModel(QAbstractTableModel):
         col = _HEADERS[index.column()][0]
 
         if role == Qt.DisplayRole or role == Qt.ToolTipRole:
-            if col == "name":
-                return display_name(rec)
-            if col == "c2":
-                return display_c2(rec)
+            if col == "indicator":
+                return display_indicator(rec)
+            if col == "details":
+                return display_details(rec)
             if col == "severity":
                 score = severity_score(rec)
                 return f"{score} · {severity_tier(score)[0]}"
             if col == "source":
                 return source_label(rec)
-            if col == "raw":
-                return "View JSON →"
 
         if role == SORT_ROLE:
             return self._sort_value(rec, col)
 
         if role == Qt.ForegroundRole:
-            if col in ("c2", "source"):
+            if col in ("details", "source"):
                 return QColor(theme.TEXT_MUTED)
-            if col == "raw":
-                return QColor(theme.ACCENT)
         if role == Qt.TextAlignmentRole and col == "severity":
             return Qt.AlignCenter
         return None
@@ -103,10 +97,10 @@ class _TableModel(QAbstractTableModel):
     def _sort_value(rec: dict[str, Any], col: str) -> Any:
         if col == "severity":
             return severity_score(rec)
-        if col == "name":
-            return str(display_name(rec)).lower()
-        if col == "c2":
-            return str(display_c2(rec)).lower()
+        if col == "indicator":
+            return str(rec.get("ioc_value", "")).lower()
+        if col == "details":
+            return str(display_details(rec)).lower()
         if col == "source":
             return str(source_label(rec)).lower()
         return str(rec.get("ioc_value", "")).lower()
@@ -155,21 +149,6 @@ class _SeverityDelegate(QStyledItemDelegate):
         super().paint(painter, option, index)
 
 
-class _LinkDelegate(QStyledItemDelegate):
-    def paint(self, painter: QPainter, option: Any, index: QModelIndex) -> None:
-        if index.isValid() and index.column() == 4:
-            painter.save()
-            painter.setPen(QPen(QColor(theme.ACCENT)))
-            f = QFont(painter.font())
-            f.setPointSizeF(12)
-            f.setWeight(QFont.DemiBold)
-            painter.setFont(f)
-            painter.drawText(option.rect, Qt.AlignCenter, "View JSON →")
-            painter.restore()
-            return
-        super().paint(painter, option, index)
-
-
 class DatabasePage(BasePage):
     def __init__(self, config: AppConfig, db: DatabaseEngine, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -179,7 +158,6 @@ class DatabasePage(BasePage):
         self._proxy = _FilterProxy(self)
         self._model = _TableModel([], self)
         self._proxy.setSourceModel(self._model)
-        self._dialog: JSONViewDialog | None = None
 
         self.header(
             "Threat Intelligence Database",
@@ -209,6 +187,11 @@ class DatabasePage(BasePage):
         toolbar.addWidget(self._count_label)
         toolbar.addStretch(1)
 
+        self._cvss_status = QLabel("")
+        self._cvss_status.setObjectName("OnlinePill")
+        self._cvss_status.setVisible(False)
+        toolbar.addWidget(self._cvss_status)
+
         refresh = QPushButton("Refresh")
         refresh.setProperty("class", "Secondary")
         refresh.clicked.connect(self.reload)
@@ -235,23 +218,26 @@ class DatabasePage(BasePage):
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(50)
         self._table.setItemDelegateForColumn(2, _SeverityDelegate(self._table))
-        self._table.setItemDelegateForColumn(4, _LinkDelegate(self._table))
 
         header = self._table.horizontalHeader()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(QHeaderView.Interactive)
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self._table.setColumnWidth(0, 180)
         self._table.setColumnWidth(2, 150)
-        self._table.setColumnWidth(4, 110)
-
-        self._table.clicked.connect(self._on_row_clicked)
 
         card_layout.addWidget(self._table)
         self._root.addWidget(card, 1)
+
+    def set_cvss_status(self, text: str, visible: bool = True) -> None:
+        try:
+            self._cvss_status.setText(text)
+            self._cvss_status.setVisible(visible)
+        except RuntimeError:
+            pass  # widget already destroyed (app closing)
 
     def reload(self) -> None:
         try:
@@ -267,17 +253,3 @@ class DatabasePage(BasePage):
         self._proxy.setSourceModel(self._model)
         self._count_label.setText(f"{len(self._records):,} records")
         self._table.sortByColumn(2, Qt.DescendingOrder)
-
-    def _on_row_clicked(self, index: QModelIndex) -> None:
-        if index.column() != 4:
-            return
-        src_row = self._proxy.mapToSource(index).row()
-        if 0 <= src_row < len(self._records):
-            payload = self._records[src_row].get("raw_data")
-            if payload is not None:
-                self._dialog = JSONViewDialog(
-                    payload,
-                    title="Raw JSON — original source payload",
-                    parent=self,
-                )
-                self._dialog.exec()

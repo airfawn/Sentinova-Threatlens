@@ -22,7 +22,7 @@ def _run_cli() -> None:
 
     try:
         pipeline = IngestionPipeline(config)
-        stats = pipeline.run()
+        stats = pipeline.run(enrich_cvss="--enrich-cvss" in sys.argv[1:])
     except Exception:
         logger.exception("Pipeline execution failed")
         sys.exit(1)

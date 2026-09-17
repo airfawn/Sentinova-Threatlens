@@ -5,10 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QThread, Qt, Signal
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QFrame,
-    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -19,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from sentinova_threatlens.config import AppConfig
 from sentinova_threatlens.gui import theme
+from sentinova_threatlens.gui.widgets.shadowcard import ShadowCard
 from sentinova_threatlens.gui.widgets.sidebar import logo_pixmap
 from sentinova_threatlens.pipeline import IngestionPipeline
 
@@ -35,6 +33,7 @@ _STAGE_TO_ITEM = {
     "import": 1,
     "rules": 2,
     "process": 3,
+    "enrich": 3,
     "verify": 4,
     "complete": 4,
 }
@@ -72,19 +71,10 @@ class SplashWindow(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(480, 600)
 
-        self._card = QFrame(self)
-        self._card.setStyleSheet(
-            "background: %s; border-radius: %dpx; border: 1px solid %s;"
-            % (theme.CARD, 24, theme.BORDER)
-        )
-        shadow = QGraphicsDropShadowEffect(self._card)
-        shadow.setBlurRadius(60)
-        shadow.setOffset(0, 10)
-        shadow.setColor(QColor(0, 0, 0, 180))
-        self._card.setGraphicsEffect(shadow)
+        self._card = ShadowCard(radius=24, parent=self)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
+        root.setContentsMargins(20, 20, 20, 20)
         root.addWidget(self._card)
 
         body = QVBoxLayout(self._card)
@@ -97,23 +87,25 @@ class SplashWindow(QWidget):
         logo.setAlignment(Qt.AlignCenter)
         body.addWidget(logo, 0, Qt.AlignCenter)
 
-        brand = QLabel("SENTINOVA THREATLENS")
+        # Tracked caps are implemented with literal spaces (not QSS
+        # letter-spacing, which can mis-size labels and clip glyphs on macOS).
+        brand = QLabel("S E N T I N O V A   T H R E A T L E N S")
         brand.setStyleSheet(
-            "font-size: 15px; font-weight: 700; letter-spacing: 3px; color: %s;" % theme.TEXT
+            "font-size: 15px; font-weight: 700; color: %s;" % theme.TEXT
         )
         brand.setAlignment(Qt.AlignCenter)
         body.addWidget(brand)
 
-        tagline = QLabel("THREAT INTELLIGENCE")
+        tagline = QLabel("T H R E A T   I N T E L L I G E N C E")
         tagline.setStyleSheet(
-            "font-size: 26px; font-weight: 700; letter-spacing: 6px; color: %s;" % theme.TEXT
+            "font-size: 22px; font-weight: 670; color: %s;" % theme.TEXT
         )
         tagline.setAlignment(Qt.AlignCenter)
         body.addWidget(tagline)
 
         body.addSpacing(24)
 
-        self._task_label = QLabel("Starting…")
+        self._task_label = QLabel("Please wait..")
         self._task_label.setStyleSheet("font-size: 13px; color: %s;" % theme.TEXT)
         body.addWidget(self._task_label, 0, Qt.AlignLeft)
 
@@ -153,7 +145,7 @@ class SplashWindow(QWidget):
         body.addLayout(grid)
 
         body.addSpacing(14)
-        footer = QLabel("v0.1.0 · CTI Ingestion Engine")
+        footer = QLabel("v0.1.0 ")
         footer.setStyleSheet("font-size: 11px; color: %s;" % theme.TEXT_FAINT)
         footer.setAlignment(Qt.AlignCenter)
         body.addWidget(footer)
@@ -190,6 +182,11 @@ class SplashWindow(QWidget):
             skipped = extra["skipped"]
             reason = next(iter((extra.get("reasons") or {}).keys()), "")
             self._detail_label.setText(f"⚠  {skipped:,} records skipped — {reason}")
+        elif extra and "new" in extra:
+            self._detail_label.setText(
+                f"Importing {extra['new']:,} new indicators — "
+                f"{extra['already']:,} already present"
+            )
         elif extra and "count" in extra:
             self._detail_label.setText(f"Indicators collected so far: {extra['count']:,}")
         else:

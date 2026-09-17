@@ -29,3 +29,17 @@ CREATE INDEX IF NOT EXISTS idx_iocs_last_seen
 
 CREATE INDEX IF NOT EXISTS idx_iocs_normalized_gin
     ON cti_iocs.iocs USING GIN (normalized_data);
+
+CREATE TABLE IF NOT EXISTS cti_iocs.cvss_cache (
+    cve_id        TEXT         PRIMARY KEY,
+    cvss_score    NUMERIC(4,2),
+    cvss_severity VARCHAR(16),
+    cvss_vector   TEXT,
+    source        VARCHAR(32)  NOT NULL DEFAULT 'CIRCL',
+    fetched_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cvss_cache_severity
+    ON cti_iocs.cvss_cache (cvss_severity);
+
+-- The additive compliance migration is applied separately by deployment tooling.

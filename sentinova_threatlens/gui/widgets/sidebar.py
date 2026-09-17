@@ -13,6 +13,7 @@ NAV_ITEMS = [
     ("database", "Database"),
     ("dashboard", "Dashboard"),
     ("threats", "Threats"),
+    ("incidents", "Incidents"),
     ("sources", "Sources"),
     ("settings", "Settings"),
 ]

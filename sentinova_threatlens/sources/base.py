@@ -18,6 +18,7 @@ class BaseSource(ABC):
         self._config = config
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": "SentinovaThreatlens/1.0"})
+        self.skip_ips: set[str] = set()
 
     @abstractmethod
     def fetch(self) -> list[dict[str, Any]]:
