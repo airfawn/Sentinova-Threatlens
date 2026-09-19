@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -21,9 +19,6 @@ class BasePage(QWidget):
         self._root = QVBoxLayout(self)
         self._root.setContentsMargins(theme.PAGE_MARGIN, 26, theme.PAGE_MARGIN, 28)
         self._root.setSpacing(20)
-        self._fade_effect = QGraphicsOpacityEffect(self)
-        self._fade_effect.setOpacity(1.0)
-        self._fade: QPropertyAnimation | None = None
 
     def header(self, title: str, subtitle: str, pill_text: str | None = None) -> None:
         top = QHBoxLayout()
@@ -49,12 +44,5 @@ class BasePage(QWidget):
     def apply_to(self, widget: QWidget) -> None:
         self._root.addWidget(widget, 1)
 
-    def fade_in(self) -> None:
-        self._fade_effect.setOpacity(0.0)
-        self.setGraphicsEffect(self._fade_effect)
-        self._fade = QPropertyAnimation(self._fade_effect, b"opacity", self)
-        self._fade.setDuration(220)
-        self._fade.setStartValue(0.0)
-        self._fade.setEndValue(1.0)
-        self._fade.setEasingCurve(QEasingCurve.OutCubic)
-        self._fade.start()
+    def deactivate(self) -> None:
+        """Allow a page to close transient controls before it is hidden."""

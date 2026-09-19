@@ -7,17 +7,17 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
     QFileDialog,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
-    QAbstractItemView,
     QLabel,
     QLineEdit,
     QPushButton,
-    QComboBox,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -29,7 +29,8 @@ from sentinova_threatlens.config import AppConfig
 from sentinova_threatlens.gui import theme
 from sentinova_threatlens.gui.pages.base import BasePage
 from sentinova_threatlens.gui.state import AppState
-from sentinova_threatlens.gui.widgets.presentation import display_details, severity_score
+from sentinova_threatlens.gui.widgets.presentation import severity_score
+from sentinova_threatlens.validation import CANONICAL_IOC_TYPES
 
 
 def _card(title: str, value: str) -> QFrame:
@@ -44,6 +45,17 @@ def _card(title: str, value: str) -> QFrame:
     layout.addWidget(label)
     layout.addWidget(amount)
     return frame
+
+
+def _table_card(table: QTableWidget) -> QFrame:
+    card = QFrame()
+    card.setObjectName("Card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    table.setObjectName("DataTable")
+    layout.addWidget(table)
+    return card
 
 
 class DashboardPage(BasePage):
@@ -68,10 +80,18 @@ class DashboardPage(BasePage):
             self._metrics.addWidget(frame, 1)
         self._root.addLayout(self._metrics)
 
-        self._breakdown = QLabel("Threat category breakdown will appear after ingestion.")
+        breakdown_card = QFrame()
+        breakdown_card.setObjectName("SubCard")
+        breakdown_layout = QVBoxLayout(breakdown_card)
+        breakdown_layout.setContentsMargins(18, 16, 18, 16)
+        title = QLabel("Threat category breakdown")
+        title.setObjectName("CardTitle")
+        breakdown_layout.addWidget(title)
+        self._breakdown = QLabel("Waiting for ingestion data.")
         self._breakdown.setObjectName("CardCaption")
         self._breakdown.setWordWrap(True)
-        self._root.addWidget(self._breakdown)
+        breakdown_layout.addWidget(self._breakdown)
+        self._root.addWidget(breakdown_card)
         self._root.addStretch(1)
         state.records_changed.connect(self._render)
         state.sources_changed.connect(lambda _items: self._render(state.records))
@@ -93,10 +113,27 @@ class ThreatsPage(BasePage):
         self._records: list[dict[str, Any]] = []
         self.header("Threats", "Search, triage, enrich, and export indicators", "●  Analyst")
         toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
         self._search = QLineEdit()
+        self._search.setObjectName("ThreatSearch")
         self._search.setPlaceholderText("Search indicator or source...")
         self._search.textChanged.connect(self._render)
         toolbar.addWidget(self._search, 1)
+        selector = QVBoxLayout()
+        selector.setSpacing(4)
+        selector_label = QLabel("IOC type / field")
+        selector_label.setObjectName("ControlLabel")
+        selector.addWidget(selector_label)
+        self._ioc_type = QComboBox()
+        self._ioc_type.setObjectName("IocTypeSelector")
+        self._ioc_type.setMinimumWidth(190)
+        self._ioc_type.setToolTip("Filter the IOC table by the normalized indicator type.")
+        self._ioc_type.addItem("All IOC types", "")
+        for ioc_type in sorted(CANONICAL_IOC_TYPES):
+            self._ioc_type.addItem(ioc_type.replace("HASH_", "Hash "), ioc_type)
+        self._ioc_type.currentIndexChanged.connect(self._render)
+        selector.addWidget(self._ioc_type)
+        toolbar.addLayout(selector)
         export_csv = QPushButton("Export CSV")
         export_csv.setProperty("class", "Secondary")
         export_csv.clicked.connect(self._export_csv)
@@ -108,10 +145,16 @@ class ThreatsPage(BasePage):
         self._root.addLayout(toolbar)
 
         content = QHBoxLayout()
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(16)
         self._table = QTableWidget(0, 4)
+        self._table.setObjectName("DataTable")
         self._table.setHorizontalHeaderLabels(["Indicator", "Type", "Score", "Source"])
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setSelectionMode(QAbstractItemView.SingleSelection)
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setAlternatingRowColors(True)
+        self._table.verticalHeader().setVisible(False)
         self._table.cellClicked.connect(self._show_detail)
         content.addWidget(self._table, 3)
 
@@ -125,7 +168,10 @@ class ThreatsPage(BasePage):
         drawer_layout.addWidget(self._detail, 1)
         self._drawer.setMinimumWidth(280)
         content.addWidget(self._drawer, 1)
-        self._root.addLayout(content, 1)
+        content_frame = QFrame()
+        content_frame.setObjectName("Card")
+        content_frame.setLayout(content)
+        self._root.addWidget(content_frame, 1)
         state.records_changed.connect(self._set_records)
         self._set_records([])
 
@@ -135,7 +181,15 @@ class ThreatsPage(BasePage):
 
     def _render(self) -> None:
         query = self._search.text().lower().strip()
-        visible = [record for record in self._records if not query or query in json.dumps(record, default=str).lower()]
+        selected_type = str(self._ioc_type.currentData() or "")
+        visible = []
+        for record in self._records:
+            normalized = record.get("normalized_data", {}) or {}
+            if selected_type and normalized.get("ioc_type") != selected_type:
+                continue
+            if query and query not in json.dumps(record, default=str).lower():
+                continue
+            visible.append(record)
         self._table.setRowCount(len(visible))
         for row, record in enumerate(visible):
             normalized = record.get("normalized_data", {}) or {}
@@ -143,10 +197,20 @@ class ThreatsPage(BasePage):
             for column, value in enumerate(values):
                 self._table.setItem(row, column, QTableWidgetItem(str(value)))
         self._table.resizeColumnsToContents()
+        self._table.horizontalHeader().setStretchLastSection(True)
+        self._detail.clear()
+
+    def deactivate(self) -> None:
+        self._ioc_type.hidePopup()
 
     def _show_detail(self, row: int, _column: int) -> None:
         query = self._search.text().lower().strip()
-        visible = [record for record in self._records if not query or query in json.dumps(record, default=str).lower()]
+        selected_type = str(self._ioc_type.currentData() or "")
+        visible = [
+            record for record in self._records
+            if (not selected_type or (record.get("normalized_data", {}) or {}).get("ioc_type") == selected_type)
+            and (not query or query in json.dumps(record, default=str).lower())
+        ]
         if row < len(visible):
             record = visible[row]
             self._detail.setPlainText(json.dumps(record, indent=2, default=str))
@@ -193,7 +257,7 @@ class SourcesPage(BasePage):
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["Feed", "Enabled", "Interval", "Status", "Last poll"])
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._root.addWidget(self._table, 1)
+        self._root.addWidget(_table_card(self._table), 1)
         self._feeds: list[dict[str, Any]] = []
         state.feeds_changed.connect(self._render)
         self._render([])
@@ -245,7 +309,7 @@ class IncidentsPage(BasePage):
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Title", "Status", "Assignee", "Score"])
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._root.addWidget(self._table, 1)
+        self._root.addWidget(_table_card(self._table), 1)
         actions = QHBoxLayout()
         self._status = QComboBox()
         self._status.addItems(["acknowledged", "in-progress", "resolved", "closed"])
@@ -293,9 +357,11 @@ class SettingsPage(BasePage):
             field = QLineEdit(value)
             field.setReadOnly(True)
             form.addRow(label, field)
-        body = QWidget()
+        body = QFrame()
+        body.setObjectName("SubCard")
+        body.setContentsMargins(12, 12, 12, 12)
         body.setLayout(form)
-        self._root.addWidget(body)
+        self._root.addWidget(body, 0)
         refresh = QPushButton("Refresh state")
         refresh.setProperty("class", "Secondary")
         refresh.clicked.connect(state.refresh)

@@ -58,6 +58,11 @@ class IngestionPipeline:
         for idx, source_cls in enumerate(ALL_SOURCES):
             source = source_cls(self._config.sources)
             src_name = source.name
+            if src_name in self._config.disabled_sources:
+                source_stats[src_name] = {"status": "skipped_by_user", "raw_items": 0, "normalised": 0}
+                emit("import", f"Skipping {src_name} by user choice", 8.0 + (idx / len(ALL_SOURCES)) * 47.0, {"source": src_name, "skipped": True})
+                source.close()
+                continue
             fraction = 8.0 + (idx / len(ALL_SOURCES)) * 47.0
             emit("import", f"Importing {src_name}…", fraction,
                  {"source": src_name, "phase": "fetch"})

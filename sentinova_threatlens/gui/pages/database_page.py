@@ -150,10 +150,11 @@ class _SeverityDelegate(QStyledItemDelegate):
 
 
 class DatabasePage(BasePage):
-    def __init__(self, config: AppConfig, db: DatabaseEngine, parent: QWidget | None = None) -> None:
+    def __init__(self, config: AppConfig, db: DatabaseEngine, refresh_callback: Any = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._config = config
         self._db = db
+        self._refresh_callback = refresh_callback
         self._records: list[dict[str, Any]] = []
         self._proxy = _FilterProxy(self)
         self._model = _TableModel([], self)
@@ -167,7 +168,13 @@ class DatabasePage(BasePage):
         self._build_toolbar()
         self._build_table()
 
-        self.reload()
+
+    def set_records(self, records: list[dict[str, Any]]) -> None:
+        self._records = records or []
+        self._model = _TableModel(self._records, self)
+        self._proxy.setSourceModel(self._model)
+        self._count_label.setText(f"{len(self._records):,} records")
+        self._table.sortByColumn(2, Qt.DescendingOrder)
 
     def _build_toolbar(self) -> None:
         from PySide6.QtWidgets import QHBoxLayout
@@ -194,7 +201,7 @@ class DatabasePage(BasePage):
 
         refresh = QPushButton("Refresh")
         refresh.setProperty("class", "Secondary")
-        refresh.clicked.connect(self.reload)
+        refresh.clicked.connect(self._refresh_callback or self.reload)
         toolbar.addWidget(refresh)
         self._root.addLayout(toolbar)
 
@@ -248,8 +255,4 @@ class DatabasePage(BasePage):
 
             logging.getLogger("gui.database_page").exception("Failed to load records")
             records = []
-        self._records = records or []
-        self._model = _TableModel(self._records, self)
-        self._proxy.setSourceModel(self._model)
-        self._count_label.setText(f"{len(self._records):,} records")
-        self._table.sortByColumn(2, Qt.DescendingOrder)
+        self.set_records(records or [])

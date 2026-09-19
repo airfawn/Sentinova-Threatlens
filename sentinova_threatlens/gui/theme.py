@@ -114,7 +114,8 @@ QPushButton.NavButton {{
     background: transparent;
     border: none;
     border-radius: 12px;
-    padding: 11px 14px;
+    padding: 10px 14px;
+    min-height: 40px;
     font-size: 13.5px;
     font-weight: 500;
     text-align: left;
@@ -187,6 +188,7 @@ QLineEdit, QComboBox {{
     padding: 9px 14px;
     color: {TEXT};
     font-size: 13px;
+    min-height: 18px;
 }}
 QLineEdit:hover, QComboBox:hover {{
     border-color: #2E3947;
@@ -197,7 +199,10 @@ QLineEdit:focus, QComboBox:focus {{
 QLineEdit::placeholder {{
     color: {TEXT_FAINT};
 }}
-QComboBox::drop-down {{ border: none; }}
+QComboBox::drop-down {{
+    border: none;
+    width: 30px;
+}}
 QComboBox QAbstractItemView {{
     background: {CARD};
     border: 1px solid {BORDER};
@@ -215,6 +220,7 @@ QPushButton.Primary {{
     border: none;
     border-radius: {BUTTON_RADIUS}px;
     padding: 9px 18px;
+    min-height: 38px;
     font-size: 13px;
     font-weight: 600;
 }}
@@ -227,6 +233,7 @@ QPushButton.Secondary {{
     border: 1px solid {BORDER};
     border-radius: {BUTTON_RADIUS}px;
     padding: 9px 18px;
+    min-height: 36px;
     font-size: 13px;
     font-weight: 500;
 }}
@@ -281,6 +288,11 @@ QTableWidget, QTableView {{
     border-radius: {TABLE_RADIUS}px;
     gridline-color: transparent;
     outline: none;
+}}
+QTableWidget#DataTable {{
+    background: {CARD};
+    border: none;
+    border-radius: {TABLE_RADIUS}px;
 }}
 QTableWidget::item, QTableView::item {{
     padding: 2px 12px;
@@ -387,4 +399,20 @@ QToolTip {{
 }}
 #SearchBox:focus {{ border-color: {ACCENT_DIM}; }}
 #SearchBox[state="focused"] {{ border-color: {ACCENT_DIM}; }}
+
+#ThreatSearch {{
+    min-height: 20px;
+}}
+#IocTypeSelector {{
+    min-height: 20px;
+    padding-right: 34px;
+}}
+#ControlLabel {{
+    color: {TEXT_MUTED};
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+}}
 """
+    app.setStyleSheet(_QSS)

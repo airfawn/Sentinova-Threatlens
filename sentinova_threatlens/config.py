@@ -29,6 +29,32 @@ def _env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
+def save_env_values(values: dict[str, str]) -> None:
+    """Persist selected local settings without rewriting unrelated .env lines."""
+    path = _PROJECT_ROOT / ".env"
+    try:
+        lines = path.read_text().splitlines() if path.exists() else []
+        remaining = dict(values)
+        updated: list[str] = []
+        for line in lines:
+            stripped = line.lstrip()
+            key = stripped.split("=", 1)[0].strip() if "=" in stripped and not stripped.startswith("#") else ""
+            if key in remaining:
+                updated.append(f"{key}={remaining.pop(key)}")
+            else:
+                updated.append(line)
+        if remaining:
+            if updated and updated[-1] != "":
+                updated.append("")
+            updated.extend(f"{key}={value}" for key, value in remaining.items())
+        path.write_text("\n".join(updated) + "\n")
+        for key, value in values.items():
+            if value:
+                os.environ[key] = value
+    except OSError:
+        logging.getLogger(__name__).warning("Could not persist local environment settings", exc_info=True)
+
+
 @dataclass(frozen=True)
 class DatabaseConfig:
     host: str = field(default_factory=lambda: _env("CTI_DB_HOST", "localhost"))
@@ -124,6 +150,7 @@ class AppConfig:
     sources: SourceConfig = field(default_factory=SourceConfig)
     redis: RedisConfig = field(default_factory=RedisConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
+    disabled_sources: tuple[str, ...] = ()
     log_level: str = field(default_factory=lambda: _env("CTI_LOG_LEVEL", "INFO"))
     schema_ddl: Path = field(
         default_factory=lambda: Path(__file__).parent / "db" / "schema.sql"

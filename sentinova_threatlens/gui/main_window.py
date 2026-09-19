@@ -56,7 +56,8 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("StackRoot")
         layout.addWidget(self._stack, 1)
 
-        self._db_page = DatabasePage(config, self._db)
+        self._db_page = DatabasePage(config, self._db, self._state.refresh)
+        self._state.records_changed.connect(self._db_page.set_records)
         self._pages: dict[str, QWidget] = {
             "database": self._db_page,
             "dashboard": DashboardPage(self._state),
@@ -106,7 +107,7 @@ class MainWindow(QMainWindow):
             visible=True,
         )
         if done % 150 == 0 or done == total:
-            self._db_page.reload()
+            self._state.refresh()
 
     def _on_backfill_finished(self, scored: int, unfound: int) -> None:
         self._db_page.set_cvss_status(
@@ -114,7 +115,7 @@ class MainWindow(QMainWindow):
             + (f" · {unfound:,} NVD lookup missed" if unfound else ""),
             visible=True,
         )
-        self._db_page.reload()
+        self._state.refresh()
         QTimer.singleShot(3000, lambda: self._db_page.set_cvss_status("", False))
 
     def _on_page(self, key: str) -> None:
@@ -124,11 +125,9 @@ class MainWindow(QMainWindow):
         prev = self._stack.currentWidget()
         if prev is page:
             return
+        if hasattr(prev, "deactivate"):
+            prev.deactivate()
         self._stack.setCurrentWidget(page)
-        if key == "database":
-            self._db_page.reload()
-        if hasattr(page, "fade_in"):
-            page.fade_in()
 
     @property
     def database_page(self) -> DatabasePage:
@@ -138,6 +137,9 @@ class MainWindow(QMainWindow):
         if self._backfill is not None:
             self._backfill.requestInterruption()
             self._backfill.wait(2000)
+            if self._backfill.isRunning():
+                self._backfill.terminate()
+                self._backfill.wait(1000)
         try:
             self._db.close()
         except RuntimeError:

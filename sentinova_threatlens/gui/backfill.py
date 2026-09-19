@@ -36,6 +36,7 @@ class CVSSBackfillWorker(QThread):
     def run(self) -> None:
         scored_total = 0
         try:
+            self._db.connect()
             pending = self._db.list_pending_cvss()
         except Exception:
             logger.exception("Failed to list pending CVEs")

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 from sentinova_threatlens.config import AppConfig
 from sentinova_threatlens.gui import theme
 from sentinova_threatlens.gui.main_window import MainWindow
+from sentinova_threatlens.gui.feed_setup import FeedSetupDialog
 from sentinova_threatlens.gui.splash import SplashWindow
 from sentinova_threatlens.gui.widgets.sidebar import logo_pixmap
 
@@ -36,6 +37,10 @@ def main() -> None:
     theme.apply(app)
 
     config = AppConfig()
+    feed_setup = FeedSetupDialog(config)
+    if feed_setup.exec() == 0:
+        return
+    config = feed_setup.result_config
     splash = SplashWindow(config)
     window_holder: list[MainWindow | None] = [None]
 
